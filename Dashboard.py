@@ -1,493 +1,374 @@
-# dashboard_impots_france_2026_CORRIGE2.py
+# dashboard_impots_france_FINAL.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 import zipfile
 import io
-import xlrd  # Nécessaire pour les vieux .xls
-from pathlib import Path
+import tempfile
+import os
 
 st.set_page_config(page_title="Fiscalité France 2026", layout="wide")
+st.title("💰 Fiscalité France - Données Officielles 2026")
+
+st.markdown("""
+---
+### 📥 TÉLÉCHARGEZ LES 2 FICHIERS MANUELLEMENT :
+
+1. **IRCOM 2024** (impôt sur le revenu)  
+   👉 [https://www.data.gouv.fr/datasets/limpot-sur-le-revenu-par-collectivite-territoriale-ircom](https://www.data.gouv.fr/datasets/limpot-sur-le-revenu-par-collectivite-territoriale-ircom)  
+   ➡️ Cliquez sur **Télécharger** → Fichier **ZIP** contenant des **fichiers XLS**
+
+2. **FILOSOFI 2021** (pauvreté, inégalités)  
+   👉 [https://www.data.gouv.fr/datasets/donnees-de-revenus-localises-filosofi](https://www.data.gouv.fr/datasets/donnees-de-revenus-localises-filosofi)  
+   ➡️ Cliquez sur **Télécharger** → Fichier **XLS** "Communes"
+---
+""")
 
 # ============================================================
-# 1. IRCOM - DONNÉES PRINCIPALES
+# 1. CHARGEMENT IRCOM - FORMAT XLS DANS UN ZIP
 # ============================================================
-@st.cache_data(ttl=86400)
-def load_ircom_data():
-    """
-    Charge les données IRCOM 2024 depuis le ZIP
-    """
-    # URL du ZIP (testée fonctionnelle)
-    url_zip = "https://www.data.gouv.fr/fr/datasets/r/bbdd74b9-7821-4037-86d1-3b46c36947a1"
-    
-    try:
-        with st.spinner("📥 Téléchargement IRCOM 2024..."):
-            response = requests.get(url_zip, timeout=30)
-            response.raise_for_status()
-        
-        with st.spinner("🔄 Extraction..."):
-            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                fichiers = z.namelist()
+st.header("📂 1. Chargez le fichier IRCOM (ZIP contenant des XLS)")
+
+ircom_zip = st.file_uploader(
+    "Téléchargez le fichier ZIP téléchargé depuis data.gouv.fr",
+    type=['zip'],
+    key='ircom_zip'
+)
+
+df_ircom = None
+
+if ircom_zip:
+    with st.spinner("📦 Extraction et lecture des fichiers XLS..."):
+        with zipfile.ZipFile(ircom_zip) as z:
+            fichiers = z.namelist()
+            st.info(f"Fichiers dans le ZIP : {fichiers}")
+            
+            # Cherche tous les fichiers XLS
+            fichiers_xls = [f for f in fichiers if f.endswith('.xls')]
+            
+            if not fichiers_xls:
+                st.error("❌ Aucun fichier XLS trouvé dans le ZIP")
+            else:
+                # Prend le premier fichier XLS (souvent le national)
+                with z.open(fichiers_xls[0]) as f:
+                    # Lecture du XLS avec openpyxl
+                    df_ircom = pd.read_excel(f, sheet_name=0, dtype=str, engine='openpyxl')
+                st.success(f"✅ IRCOM chargé : {len(df_ircom):,} communes")
                 
-                # Chercher le fichier national
-                fichier_csv = None
-                for f in fichiers:
-                    if f.endswith('.csv') and ('france' in f.lower() or 'entiere' in f.lower()):
-                        fichier_csv = f
-                        break
-                if not fichier_csv:
-                    fichier_csv = [f for f in fichiers if f.endswith('.csv')][0]
-                
-                with z.open(fichier_csv) as f:
-                    # Détection automatique du séparateur
-                    first_line = f.readline().decode('latin1')
-                    sep = ';' if ';' in first_line else ','
-                    f.seek(0)
-                    df = pd.read_csv(f, sep=sep, encoding='latin1', dtype=str, low_memory=False)
-        
-        # Nettoyage
-        df_clean = df.copy()
-        
-        # Mapping des colonnes essentielles
-        col_map = {
-            'codgeo': 'code_commune',
-            'libgeo': 'nom_commune',
-            'dep': 'code_departement',
-            'libdep': 'nom_departement',
-            'nb_foy': 'nb_foyers_fiscaux',
-            'nb_pers': 'nb_personnes',
-            'rev_tot': 'revenu_brut_total',
-            'rev_decl': 'revenu_declare_total',
-            'imp_tot': 'impot_total'
-        }
-        
-        rename_dict = {k: v for k, v in col_map.items() if k in df_clean.columns}
-        df_clean = df_clean.rename(columns=rename_dict)
-        
-        # Conversion numérique
-        num_cols = ['nb_foyers_fiscaux', 'nb_personnes', 'revenu_brut_total', 
-                   'revenu_declare_total', 'impot_total']
-        for col in num_cols:
-            if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(
-                    df_clean[col].astype(str).str.replace(',', '.'), 
-                    errors='coerce'
-                )
-        
-        # Calculs
-        if all(c in df_clean.columns for c in ['revenu_brut_total', 'nb_foyers_fiscaux']):
-            df_clean['revenu_moyen_foyer'] = (
-                df_clean['revenu_brut_total'] / df_clean['nb_foyers_fiscaux']
-            ).round(0)
-        
-        if all(c in df_clean.columns for c in ['impot_total', 'nb_foyers_fiscaux']):
-            df_clean['impot_moyen'] = (
-                df_clean['impot_total'] / df_clean['nb_foyers_fiscaux']
-            ).round(0)
-        
-        return df_clean
-        
-    except Exception as e:
-        st.error(f"❌ Erreur IRCOM : {e}")
-        return pd.DataFrame()
+                # Affiche les colonnes disponibles
+                with st.expander("📋 Voir les colonnes disponibles"):
+                    st.write(df_ircom.columns.tolist())
 
 # ============================================================
-# 2. FILOSOFI - CORRECTION : C'EST UN .XLS !
+# 2. CHARGEMENT FILOSOFI - FORMAT XLS
 # ============================================================
-@st.cache_data(ttl=86400)
-def load_filosofi_data():
-    """
-    Charge Filosofi 2021 - Format .xls (Excel 97-2003)
-    """
-    url_filosofi = "https://www.data.gouv.fr/fr/datasets/r/6abffbae-32ff-4e21-b8fd-1d705c35d516"
-    
-    try:
-        with st.spinner("📥 Téléchargement Filosofi 2021 (.xls)..."):
-            response = requests.get(url_filosofi, timeout=30)
-            response.raise_for_status()
+st.header("📊 2. Chargez le fichier FILOSOFI (XLS)")
+
+filosofi_file = st.file_uploader(
+    "Téléchargez le fichier XLS 'Communes' de Filosofi",
+    type=['xls', 'xlsx'],
+    key='filosofi_xls'
+)
+
+df_filosofi = None
+
+if filosofi_file:
+    with st.spinner("📖 Lecture du fichier Excel..."):
+        df_filosofi = pd.read_excel(
+            filosofi_file,
+            sheet_name=0,
+            dtype=str,
+            engine='openpyxl'
+        )
+        st.success(f"✅ FILOSOFI chargé : {len(df_filosofi):,} communes")
         
-        # 🔴 CORRECTION CRITIQUE : Lecture d'un .xls, PAS .csv
-        with st.spinner("🔄 Lecture du fichier Excel (format ancien)..."):
-            # Méthode 1 : pandas avec engine xlrd (pour .xls)
-            df = pd.read_excel(
-                io.BytesIO(response.content), 
-                sheet_name=0, 
-                dtype=str,
-                engine='xlrd'  # Spécifique pour .xls
-            )
-        
-        st.sidebar.success(f"✅ Filosofi 2021 chargé : {len(df)} communes")
-        
-        # Nettoyage
-        df_clean = df.copy()
-        
-        # Mapping des colonnes Filosofi
-        col_map = {
-            'CODGEO': 'code_commune',
-            'LIBGEO': 'nom_commune',
-            'Q212': 'revenu_median_uc',      # Médiane revenu disponible par UC
-            'TP60': 'taux_pauvrete_60',       # Taux de pauvreté à 60%
-            'D1D9': 'rapport_interdecile'     # Rapport interdécile D9/D1
-        }
-        
-        rename_dict = {k: v for k, v in col_map.items() if k in df_clean.columns}
-        df_clean = df_clean.rename(columns=rename_dict)
-        
-        # Conversion numérique
-        for col in rename_dict.values():
-            if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(
-                    df_clean[col].astype(str).str.replace(',', '.'), 
-                    errors='coerce'
-                )
-        
-        return df_clean
-        
-    except Exception as e:
-        st.warning(f"⚠️ Filosofi 2021 non disponible : {e}")
-        st.info("💡 Astuce : Si l'erreur persiste, installez xlrd : `pip install xlrd`")
-        return pd.DataFrame()
+        with st.expander("📋 Voir les colonnes Filosofi"):
+            st.write(df_filosofi.columns.tolist())
 
 # ============================================================
-# 3. INTERFACE STREAMLIT
+# 3. INTERFACE D'ANALYSE (seulement si IRCOM est chargé)
 # ============================================================
-def main():
-    st.title("💰 Fiscalité France - Données Officielles 2026")
+if df_ircom is not None:
+    st.header("📈 ANALYSE FISCALE")
     
-    # Vérification des dépendances
-    try:
-        import xlrd
-    except ImportError:
-        st.error("""
-        ❌ **Module manquant : xlrd**
-        
-        Installez-le avec :
-        ```bash
-        pip install xlrd
-        ```
-        
-        Ce module est nécessaire pour lire les fichiers .xls (Filosofi).
-        """)
-        st.stop()
+    # === NETTOYAGE DES DONNÉES IRCOM ===
+    df_clean = df_ircom.copy()
     
-    st.markdown("""
-    ---
-    **📌 SOURCES VALIDÉES**  
-    - ✅ **IRCOM 2024** : Revenus 2023 - DGFiP (Sept 2025)  
-    - ✅ **FILOSOFI 2021** : Pauvreté & inégalités - INSEE (Fév 2026) - **Format .xls**  
-    ---
-    """)
+    # Mapping des colonnes (adaptez selon votre fichier)
+    # Les noms peuvent varier, on cherche les colonnes par ressemblance
+    colonnes = df_clean.columns.tolist()
     
-    # Chargement IRCOM
-    df_ircom = load_ircom_data()
+    # Détection automatique des colonnes
+    col_map = {}
+    for col in colonnes:
+        col_lower = col.lower()
+        if 'codgeo' in col_lower or 'code_insee' in col_lower or 'code commune' in col_lower:
+            col_map['code_commune'] = col
+        elif 'libgeo' in col_lower or 'nom commune' in col_lower or 'commune' in col_lower:
+            col_map['nom_commune'] = col
+        elif 'dep' in col_lower and 'lib' not in col_lower:
+            col_map['code_departement'] = col
+        elif 'libdep' in col_lower or 'departement' in col_lower:
+            col_map['nom_departement'] = col
+        elif 'nb_foy' in col_lower or 'nombre de foyers' in col_lower:
+            col_map['nb_foyers'] = col
+        elif 'rev_tot' in col_lower or 'revenu total' in col_lower or 'revenu brut' in col_lower:
+            col_map['revenu_total'] = col
+        elif 'imp_tot' in col_lower or 'impot total' in col_lower:
+            col_map['impot_total'] = col
     
-    if df_ircom.empty:
-        st.error("""
-        ❌ **Téléchargement automatique IRCOM échoué**
-        
-        **Solution manuelle :**
-        1. https://www.data.gouv.fr/datasets/limpot-sur-le-revenu-par-collectivite-territoriale-ircom
-        2. Téléchargez le ZIP (septembre 2025)
-        3. Dézippez et uploadez le CSV
-        """)
-        
-        uploaded_file = st.file_uploader("Choisissez le fichier CSV", type=['csv'])
-        if uploaded_file:
-            df_ircom = pd.read_csv(uploaded_file, sep=';', dtype=str)
-            st.success("✅ Fichier chargé")
-        else:
-            st.stop()
+    st.sidebar.header("🔧 Configuration")
+    st.sidebar.write("Colonnes détectées :")
+    for role, col in col_map.items():
+        st.sidebar.write(f"- {role}: **{col}**")
     
-    # Chargement Filosofi (.xls)
-    df_filosofi = load_filosofi_data()
+    # Si des colonnes sont manquantes, permettre la sélection manuelle
+    if 'revenu_total' not in col_map:
+        col_map['revenu_total'] = st.sidebar.selectbox(
+            "Colonne 'Revenu total'",
+            options=colonnes
+        )
+    if 'nb_foyers' not in col_map:
+        col_map['nb_foyers'] = st.sidebar.selectbox(
+            "Colonne 'Nombre de foyers'",
+            options=colonnes
+        )
     
-    # Stats sidebar
-    st.sidebar.header("📊 Données chargées")
-    st.sidebar.metric("IRCOM - Communes", f"{len(df_ircom):,}")
-    if not df_filosofi.empty:
-        st.sidebar.metric("FILOSOFI - Communes", f"{len(df_filosofi):,}")
-        st.sidebar.info("📌 Filosofi 2021 (dernier disponible)")
+    # Conversion numérique
+    if 'revenu_total' in col_map:
+        df_clean['revenu_brut'] = pd.to_numeric(
+            df_clean[col_map['revenu_total']].astype(str).str.replace(',', '.'),
+            errors='coerce'
+        )
     
-    # Navigation
-    st.sidebar.header("🔍 Recherche")
-    search_type = st.sidebar.radio("Type", ["Commune", "Département", "Classement"])
+    if 'nb_foyers' in col_map:
+        df_clean['nb_foyers'] = pd.to_numeric(
+            df_clean[col_map['nb_foyers']].astype(str).str.replace(',', '.'),
+            errors='coerce'
+        )
     
-    if search_type == "Commune":
-        # Sélection département
-        dept_list = sorted(df_ircom['nom_departement'].dropna().unique())
+    if 'impot_total' in col_map:
+        df_clean['impot_brut'] = pd.to_numeric(
+            df_clean[col_map['impot_total']].astype(str).str.replace(',', '.'),
+            errors='coerce'
+        )
+    
+    # Calculs
+    if 'revenu_brut' in df_clean.columns and 'nb_foyers' in df_clean.columns:
+        df_clean['revenu_moyen'] = (df_clean['revenu_brut'] / df_clean['nb_foyers']).round(0)
+    
+    if 'impot_brut' in df_clean.columns and 'nb_foyers' in df_clean.columns:
+        df_clean['impot_moyen'] = (df_clean['impot_brut'] / df_clean['nb_foyers']).round(0)
+    
+    if 'revenu_moyen' in df_clean.columns and 'impot_moyen' in df_clean.columns:
+        df_clean['taux_imposition'] = (df_clean['impot_moyen'] / df_clean['revenu_moyen'] * 100).round(1)
+    
+    # === SÉLECTION GÉOGRAPHIQUE ===
+    st.sidebar.header("📍 Sélection")
+    
+    # Département
+    if 'nom_departement' in col_map:
+        dept_list = sorted(df_clean[col_map['nom_departement']].dropna().unique())
+    else:
+        dept_list = ["Aucun département détecté"]
+    
+    if dept_list and dept_list[0] != "Aucun département détecté":
         dept = st.sidebar.selectbox("Département", dept_list)
         
-        # Sélection commune
-        communes = df_ircom[df_ircom['nom_departement'] == dept]['nom_commune'].sort_values().unique()
-        commune = st.sidebar.selectbox("Commune", communes)
-        
-        # Données
-        data_commune = df_ircom[
-            (df_ircom['nom_departement'] == dept) & 
-            (df_ircom['nom_commune'] == commune)
-        ].iloc[0]
-        
-        # Affichage
-        st.header(f"📍 {commune} ({dept})")
-        
-        # KPIs
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            if 'revenu_moyen_foyer' in data_commune:
-                st.metric("Revenu moyen/foyer", 
-                         f"{int(data_commune['revenu_moyen_foyer']):,} €".replace(',', ' '))
-        
-        with col2:
-            if 'impot_moyen' in data_commune:
-                st.metric("Impôt moyen", 
-                         f"{int(data_commune['impot_moyen']):,} €".replace(',', ' '))
-        
-        with col3:
-            if 'nb_foyers_fiscaux' in data_commune:
-                st.metric("Foyers fiscaux", 
-                         f"{int(data_commune['nb_foyers_fiscaux']):,}".replace(',', ' '))
-        
-        with col4:
-            if 'revenu_brut_total' in data_commune:
-                revenu_total = int(data_commune['revenu_brut_total'] / 1_000_000)
-                st.metric("Revenu total", f"{revenu_total} M€")
-        
-        # Filosofi (si disponible)
-        if not df_filosofi.empty:
-            code_insee = str(data_commune['code_commune']).zfill(5)
-            paup_data = df_filosofi[df_filosofi['code_commune'].astype(str).str.zfill(5) == code_insee]
+        # Commune
+        mask = df_clean[col_map['nom_departement']] == dept
+        if 'nom_commune' in col_map:
+            communes = df_clean[mask][col_map['nom_commune']].sort_values().unique()
+            commune = st.sidebar.selectbox("Commune", communes)
             
-            if not paup_data.empty:
-                st.subheader("📉 Indicateurs sociaux (FILOSOFI 2021)")
-                row = paup_data.iloc[0]
-                
-                col1, col2, col3 = st.columns(3)
-                
-                if 'revenu_median_uc' in row and pd.notna(row['revenu_median_uc']):
-                    col1.metric(
-                        "Revenu médian/UC",
-                        f"{int(row['revenu_median_uc']):,} €".replace(',', ' '),
-                        help="Revenu disponible médian par Unité de Consommation"
-                    )
-                
-                if 'taux_pauvrete_60' in row and pd.notna(row['taux_pauvrete_60']):
-                    col2.metric(
-                        "Taux de pauvreté",
-                        f"{row['taux_pauvrete_60']:.1f} %",
-                        help="Seuil à 60% du revenu médian national",
-                        delta=f"{row['taux_pauvrete_60'] - 14.5:.1f} pts" if 'taux_pauvrete_60' in row else None
-                    )
-                
-                if 'rapport_interdecile' in row and pd.notna(row['rapport_interdecile']):
-                    col3.metric(
-                        "Rapport D9/D1",
-                        f"{row['rapport_interdecile']:.1f}",
-                        help="Inégalités : les 10% les plus riches gagnent X fois plus que les 10% les plus pauvres"
-                    )
-        
-        # Graphique comparatif
-        st.subheader("📊 Positionnement national")
-        
-        if 'revenu_moyen_foyer' in data_commune:
-            revenu_commune = float(data_commune['revenu_moyen_foyer'])
-            revenu_national = df_ircom['revenu_moyen_foyer'].mean()
-            percentile = (df_ircom['revenu_moyen_foyer'] < revenu_commune).mean() * 100
+            # Données de la commune
+            data_commune = df_clean[
+                (df_clean[col_map['nom_departement']] == dept) & 
+                (df_clean[col_map['nom_commune']] == commune)
+            ].iloc[0]
             
-            col1, col2 = st.columns(2)
+            # === AFFICHAGE PRINCIPAL ===
+            st.header(f"🏛️ {commune} ({dept})")
+            
+            # KPIs
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                fig = go.Figure(go.Indicator(
-                    mode = "gauge+number",
-                    value = revenu_commune,
-                    number = {'suffix': " €", 'font': {'size': 40}},
-                    title = {'text': "Revenu moyen par foyer"},
-                    gauge = {
-                        'axis': {'range': [None, df_ircom['revenu_moyen_foyer'].quantile(0.95)]},
-                        'bar': {'color': "darkblue"},
-                        'steps': [
-                            {'range': [0, revenu_national], 'color': "lightgray"},
-                            {'range': [revenu_national, df_ircom['revenu_moyen_foyer'].quantile(0.95)], 'color': "gray"}
-                        ],
-                        'threshold': {
-                            'line': {'color': "red", 'width': 4},
-                            'thickness': 0.75,
-                            'value': revenu_national
+                if 'revenu_moyen' in data_commune and pd.notna(data_commune['revenu_moyen']):
+                    st.metric(
+                        "Revenu moyen / foyer",
+                        f"{int(data_commune['revenu_moyen']):,} €".replace(',', ' ')
+                    )
+            
+            with col2:
+                if 'impot_moyen' in data_commune and pd.notna(data_commune['impot_moyen']):
+                    st.metric(
+                        "Impôt moyen",
+                        f"{int(data_commune['impot_moyen']):,} €".replace(',', ' ')
+                    )
+            
+            with col3:
+                if 'taux_imposition' in data_commune and pd.notna(data_commune['taux_imposition']):
+                    st.metric(
+                        "Taux d'imposition moyen",
+                        f"{data_commune['taux_imposition']:.1f} %"
+                    )
+            
+            with col4:
+                if 'nb_foyers' in data_commune and pd.notna(data_commune['nb_foyers']):
+                    st.metric(
+                        "Foyers fiscaux",
+                        f"{int(data_commune['nb_foyers']):,}".replace(',', ' ')
+                    )
+            
+            # === DONNÉES FILOSOFI ===
+            if df_filosofi is not None and 'code_commune' in col_map:
+                code_insee = str(data_commune[col_map['code_commune']]).zfill(5)
+                
+                # Chercher la colonne code commune dans Filosofi
+                code_col = None
+                for col in df_filosofi.columns:
+                    if 'codgeo' in col.lower() or 'code insee' in col.lower() or 'code commune' in col.lower():
+                        code_col = col
+                        break
+                
+                if code_col:
+                    paup_data = df_filosofi[df_filosofi[code_col].astype(str).str.zfill(5) == code_insee]
+                    
+                    if not paup_data.empty:
+                        st.subheader("📉 Indicateurs de pauvreté et inégalités (FILOSOFI 2021)")
+                        
+                        row = paup_data.iloc[0]
+                        col1, col2, col3 = st.columns(3)
+                        
+                        # Cherche les colonnes de revenu médian
+                        for col in row.index:
+                            if 'q212' in col.lower() or 'revenu median' in col.lower() or 'mediane' in col.lower():
+                                try:
+                                    val = float(str(row[col]).replace(',', '.'))
+                                    col1.metric("Revenu médian / UC", f"{int(val):,} €".replace(',', ' '))
+                                    break
+                                except:
+                                    pass
+                        
+                        # Cherche le taux de pauvreté
+                        for col in row.index:
+                            if 'tp60' in col.lower() or 'taux pauvreté' in col.lower():
+                                try:
+                                    val = float(str(row[col]).replace(',', '.'))
+                                    col2.metric("Taux de pauvreté (60%)", f"{val:.1f} %")
+                                    break
+                                except:
+                                    pass
+                        
+                        # Cherche le rapport interdécile
+                        for col in row.index:
+                            if 'd1d9' in col.lower() or 'rapport interdecile' in col.lower():
+                                try:
+                                    val = float(str(row[col]).replace(',', '.'))
+                                    col3.metric("Rapport D9/D1", f"{val:.1f}")
+                                    break
+                                except:
+                                    pass
+            
+            # === COMPARAISON NATIONALE ===
+            st.subheader("📊 Positionnement national")
+            
+            if 'revenu_moyen' in df_clean.columns and 'revenu_moyen' in data_commune:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Gauge
+                    revenu_commune = float(data_commune['revenu_moyen'])
+                    revenu_national = df_clean['revenu_moyen'].mean()
+                    percentile = (df_clean['revenu_moyen'] < revenu_commune).mean() * 100
+                    
+                    fig = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=revenu_commune,
+                        number={'suffix': " €", 'font': {'size': 35}},
+                        title={'text': "Revenu moyen par foyer"},
+                        gauge={
+                            'axis': {'range': [None, df_clean['revenu_moyen'].quantile(0.95)]},
+                            'bar': {'color': "royalblue"},
+                            'steps': [
+                                {'range': [0, revenu_national], 'color': 'lightgray'},
+                                {'range': [revenu_national, df_clean['revenu_moyen'].quantile(0.95)], 'color': 'gray'}
+                            ],
+                            'threshold': {
+                                'line': {'color': 'red', 'width': 4},
+                                'thickness': 0.75,
+                                'value': revenu_national
+                            }
                         }
-                    }
-                ))
-                fig.update_layout(height=250)
-                st.plotly_chart(fig, use_container_width=True)
+                    ))
+                    fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.metric(
+                        "Moyenne nationale",
+                        f"{int(revenu_national):,} €".replace(',', ' '),
+                        delta=f"{int(revenu_commune - revenu_national):,} €".replace(',', ' '),
+                        delta_color="normal"
+                    )
+                    st.metric(
+                        "Percentile",
+                        f"{percentile:.0f}ème",
+                        help=f"Cette commune est plus riche que {percentile:.0f}% des communes françaises"
+                    )
             
-            with col2:
-                st.metric(
-                    "Revenu national moyen",
-                    f"{int(revenu_national):,} €".replace(',', ' '),
-                    delta=f"{int(revenu_commune - revenu_national):,} €".replace(',', ' '),
-                    delta_color="normal"
-                )
-                st.metric(
-                    "Percentile national",
-                    f"{percentile:.0f}ème",
-                    help=f"Cette commune est plus riche que {percentile:.0f}% des communes françaises"
-                )
-    
-    elif search_type == "Département":
-        # Liste des départements
-        dept_list = []
-        for _, row in df_ircom[['code_departement', 'nom_departement']].drop_duplicates().iterrows():
-            if pd.notna(row['code_departement']) and pd.notna(row['nom_departement']):
-                dept_list.append(f"{str(row['code_departement']).zfill(2)} - {row['nom_departement']}")
-        dept_list = sorted(dept_list)
-        
-        selected = st.sidebar.selectbox("Département", dept_list)
-        dept_code = selected.split(' - ')[0].zfill(2)
-        dept_name = selected.split(' - ')[1]
-        
-        # Données du département
-        data_dept = df_ircom[df_ircom['code_departement'].astype(str).str.zfill(2) == dept_code]
-        
-        st.header(f"🗺️ {dept_name} ({dept_code})")
-        
-        # Stats départementales
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Communes", len(data_dept))
-        
-        with col2:
-            if 'revenu_moyen_foyer' in data_dept.columns:
-                revenu_moyen = data_dept['revenu_moyen_foyer'].mean()
-                st.metric("Revenu moyen", f"{int(revenu_moyen):,} €".replace(',', ' '))
-        
-        with col3:
-            if 'impot_moyen' in data_dept.columns:
-                impot_moyen = data_dept['impot_moyen'].mean()
-                st.metric("Impôt moyen", f"{int(impot_moyen):,} €".replace(',', ' '))
-        
-        with col4:
-            if 'nb_foyers_fiscaux' in data_dept.columns:
-                foyers_total = int(data_dept['nb_foyers_fiscaux'].sum())
-                st.metric("Foyers fiscaux", f"{foyers_total:,}".replace(',', ' '))
-        
-        # Top 10
-        st.subheader("🏅 Communes les plus aisées")
-        top10 = data_dept.nlargest(10, 'revenu_moyen_foyer')[
-            ['nom_commune', 'revenu_moyen_foyer', 'impot_moyen', 'nb_foyers_fiscaux']
-        ].copy()
-        
-        top10['revenu_moyen_foyer'] = top10['revenu_moyen_foyer'].apply(
-            lambda x: f"{int(x):,} €".replace(',', ' ')
-        )
-        top10['impot_moyen'] = top10['impot_moyen'].apply(
-            lambda x: f"{int(x):,} €".replace(',', ' ')
-        )
-        top10['nb_foyers_fiscaux'] = top10['nb_foyers_fiscaux'].apply(
-            lambda x: f"{int(x):,}".replace(',', ' ')
-        )
-        
-        st.dataframe(top10, use_container_width=True, hide_index=True)
-        
-        # Distribution
-        fig = px.histogram(
-            data_dept,
-            x='revenu_moyen_foyer',
-            nbins=30,
-            title=f"Distribution des revenus moyens par commune - {dept_name}",
-            labels={'revenu_moyen_foyer': 'Revenu moyen (€)'},
-            color_discrete_sequence=['#3366CC']
-        )
-        fig.add_vline(
-            x=df_ircom['revenu_moyen_foyer'].mean(),
-            line_dash="dash",
-            line_color="red",
-            annotation_text="Moyenne nationale"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    else:  # Classement
-        st.header("🏆 Classements nationaux")
-        
-        tab1, tab2 = st.tabs(["Départements", "Communes"])
-        
-        with tab1:
-            # Top départements
-            dept_stats = df_ircom.groupby(['code_departement', 'nom_departement']).agg({
-                'revenu_moyen_foyer': 'mean',
-                'impot_moyen': 'mean',
-                'nb_foyers_fiscaux': 'sum'
-            }).round(0).reset_index()
+            # === DISTRIBUTION DÉPARTEMENTALE ===
+            st.subheader(f"📊 Distribution des revenus dans le {dept}")
             
-            col1, col2 = st.columns(2)
+            data_dept = df_clean[df_clean[col_map['nom_departement']] == dept]
             
-            with col1:
-                st.subheader("💰 Top 10 départements les plus riches")
-                top_dept = dept_stats.nlargest(10, 'revenu_moyen_foyer')
-                top_display = top_dept[['nom_departement', 'revenu_moyen_foyer', 'impot_moyen']].copy()
-                top_display['revenu_moyen_foyer'] = top_display['revenu_moyen_foyer'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                top_display['impot_moyen'] = top_display['impot_moyen'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                st.dataframe(top_display, use_container_width=True, hide_index=True)
+            fig = px.histogram(
+                data_dept,
+                x='revenu_moyen',
+                nbins=30,
+                title=f"Revenu moyen par commune - {dept}",
+                labels={'revenu_moyen': 'Revenu moyen (€)', 'count': 'Nombre de communes'},
+                color_discrete_sequence=['#3366CC']
+            )
             
-            with col2:
-                st.subheader("📉 Top 10 départements les moins riches")
-                bottom_dept = dept_stats.nsmallest(10, 'revenu_moyen_foyer')
-                bottom_display = bottom_dept[['nom_departement', 'revenu_moyen_foyer', 'impot_moyen']].copy()
-                bottom_display['revenu_moyen_foyer'] = bottom_display['revenu_moyen_foyer'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                bottom_display['impot_moyen'] = bottom_display['impot_moyen'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                st.dataframe(bottom_display, use_container_width=True, hide_index=True)
+            # Ajout de la ligne de la commune sélectionnée
+            fig.add_vline(
+                x=revenu_commune,
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f" {commune}",
+                annotation_position="top"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+    else:
+        st.warning("⚠️ Impossible de détecter les départements. Vérifiez les colonnes.")
         
-        with tab2:
-            # Top communes
-            col1, col2 = st.columns(2)
+        # Affichage brut des données
+        with st.expander("📋 Voir les données brutes"):
+            st.dataframe(df_clean.head(100))
             
-            with col1:
-                st.subheader("💰 Top 20 communes les plus riches")
-                top_communes = df_ircom.nlargest(20, 'revenu_moyen_foyer')[
-                    ['nom_commune', 'nom_departement', 'revenu_moyen_foyer', 'impot_moyen']
-                ].copy()
-                top_communes['revenu_moyen_foyer'] = top_communes['revenu_moyen_foyer'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                top_communes['impot_moyen'] = top_communes['impot_moyen'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                st.dataframe(top_communes, use_container_width=True, hide_index=True)
-            
-            with col2:
-                st.subheader("📉 Top 20 communes les moins riches")
-                bottom_communes = df_ircom.nsmallest(20, 'revenu_moyen_foyer')[
-                    ['nom_commune', 'nom_departement', 'revenu_moyen_foyer', 'impot_moyen']
-                ].copy()
-                bottom_communes['revenu_moyen_foyer'] = bottom_communes['revenu_moyen_foyer'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                bottom_communes['impot_moyen'] = bottom_communes['impot_moyen'].apply(
-                    lambda x: f"{int(x):,} €".replace(',', ' ')
-                )
-                st.dataframe(bottom_communes, use_container_width=True, hide_index=True)
-    
-    # Pied de page
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: grey; padding: 10px;'>
-        <b>🔍 SOURCES OFFICIELLES</b><br>
-        • <b>IRCOM 2024</b> : DGFiP - Données 2023 (septembre 2025)<br>
-        • <b>FILOSOFI 2021</b> : INSEE - Dernier millésime disponible (février 2026) - <b>Format .xls</b><br>
-        • <b>Prochain Filosofi</b> : Suspendu sine die (suppression taxe d'habitation)<br>
-        <br>
-        <i>Données sous Licence Ouverte 2.0 - Reproducibilité garantie</i>
-    </div>
-    """, unsafe_allow_html=True)
+            # Stats générales
+            if 'revenu_moyen' in df_clean.columns:
+                st.write(f"Revenu moyen national : {df_clean['revenu_moyen'].mean():,.0f} €")
 
-if __name__ == "__main__":
-    main()
+else:
+    st.info("👈 Commencez par charger le fichier ZIP IRCOM (format XLS)")
+
+# ============================================================
+# PIED DE PAGE
+# ============================================================
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: grey; padding: 10px;'>
+    <b>🔍 SOURCES OFFICIELLES - MISE À JOUR FÉVRIER 2026</b><br>
+    • <b>IRCOM 2024</b> : DGFiP - Données 2023 - Format XLS dans ZIP<br>
+    • <b>FILOSOFI 2021</b> : INSEE - Dernier millésime disponible - Format XLS<br>
+    • <b>Note</b> : Les fichiers XLS sont lus directement avec openpyxl<br>
+    <br>
+    <i>Licence Ouverte 2.0 - Reproducibilité garantie par upload manuel</i>
+</div>
+""", unsafe_allow_html=True)
