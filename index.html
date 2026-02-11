@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiscalité La Réunion - Dashboard 2026</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js pour les graphiques -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS pour lire les fichiers Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        .kpi-card {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .kpi-title {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .kpi-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .section-title {
+            color: #1e3c72;
+            border-bottom: 3px solid #2a5298;
+            padding-bottom: 10px;
+            margin: 30px 0 20px 0;
+        }
+        .commune-row {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .commune-row:hover {
+            background-color: #f0f7ff;
+        }
+        .selected {
+            background-color: #e3f2fd;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <h1 class="text-center">🏝️ Fiscalité La Réunion - IRCOM 2024</h1>
+            <div class="alert alert-info text-center">
+                <h5>📊 Données IRCOM 2024 - Revenus 2023</h5>
+                <p>Source: DGFiP - Bureau des études statistiques en matière fiscale</p>
+                <p><strong>Montants en milliers d'euros</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section: Upload fichier -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">📂 1. Téléchargez votre fichier IRCOM 974.xls</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <input class="form-control" type="file" id="ircomFile" accept=".xls,.xlsx">
+                    </div>
+                    <div id="ircomStatus" class="alert alert-secondary">Aucun fichier chargé</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section: Liste des communes -->
+    <div class="row mt-4" id="communeSection" style="display: none;">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">🏘️ Communes de La Réunion</h5>
+                </div>
+                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                    <div id="communeList" class="list-group"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <!-- KPIs -->
+            <div id="kpiContainer"></div>
+            
+            <!-- Graphique -->
+            <div class="card mt-3">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">📊 Répartition des revenus par tranche</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Tableau détaillé -->
+            <div class="card mt-3">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">📋 Détail par tranche de revenu</h5>
+                </div>
+                <div class="card-body">
+                    <div id="detailTable"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pied de page -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <hr>
+            <div class="text-center text-muted p-3">
+                <b>🏆 DASHBOARD FISCALITÉ LA RÉUNION - IRCOM 2024</b><br>
+                • Données officielles DGFiP • 24 communes • Montants en milliers d'€<br>
+                • Revenus 2023 • Mise à jour septembre 2025
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// VARIABLES GLOBALES
+// ============================================================
+let communesData = {};
+let communeNames = [];
+
+// ============================================================
+// CHARGEMENT DU FICHIER IRCOM
+// ============================================================
+document.getElementById('ircomFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const status = document.getElementById('ircomStatus');
+    status.className = 'alert alert-info';
+    status.textContent = '🔄 Lecture du fichier IRCOM La Réunion...';
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheet];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            
+            // 🔴 CORRECTION: Extraire les données des communes
+            extractCommunesData(jsonData);
+            
+        } catch(error) {
+            status.className = 'alert alert-danger';
+            status.textContent = `❌ Erreur : ${error.message}`;
+            console.error(error);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+// ============================================================
+// FONCTION D'EXTRACTION DES DONNÉES COMMUNES
+// ============================================================
+function extractCommunesData(data) {
+    let inCommunesSection = false;
+    let currentCommune = null;
+    let communesTotals = {};
+    
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (!row || row.length === 0) continue;
+        
+        // Détecter le début de la section des communes
+        if (row[0] === 974 && row[2] && row[3] && row[3] !== 'LA REUNION' && row[3] !== 'Total') {
+            inCommunesSection = true;
+            
+            // Code commune (401, 402, etc.)
+            const codeCommune = row[1];
+            const nomCommune = row[2];
+            const tranche = row[3];
+            
+            // Initialiser la commune si nécessaire
+            if (!communesTotals[nomCommune]) {
+                communesTotals[nomCommune] = {
+                    code: codeCommune,
+                    nom: nomCommune,
+                    tranches: [],
+                    total_foyers: 0,
+                    total_revenu: 0,
+                    total_impot: 0,
+                    total_foyers_imposes: 0,
+                    total_revenu_imposes: 0
+                };
+            }
+            
+            // Extraire les valeurs
+            const foyers = parseFloat(String(row[4] || '0').replace(',', '.')) || 0;
+            const revenu = parseFloat(String(row[5] || '0').replace(',', '.')) || 0;
+            const impot = parseFloat(String(row[6] || '0').replace(',', '.')) || 0;
+            const foyersImposes = parseFloat(String(row[7] || '0').replace(',', '.')) || 0;
+            const revenuImposes = parseFloat(String(row[8] || '0').replace(',', '.')) || 0;
+            
+            // Ajouter la tranche
+            communesTotals[nomCommune].tranches.push({
+                nom: tranche,
+                foyers: foyers,
+                revenu: revenu,
+                impot: impot,
+                foyers_imposes: foyersImposes,
+                revenu_imposes: revenuImposes
+            });
+        }
+        
+        // Détecter la ligne TOTAL pour chaque commune
+        if (inCommunesSection && row[0] === 974 && row[3] === 'Total' && row[2]) {
+            const nomCommune = row[2];
+            if (communesTotals[nomCommune]) {
+                communesTotals[nomCommune].total_foyers = parseFloat(String(row[4] || '0').replace(',', '.')) || 0;
+                communesTotals[nomCommune].total_revenu = parseFloat(String(row[5] || '0').replace(',', '.')) || 0;
+                communesTotals[nomCommune].total_impot = parseFloat(String(row[6] || '0').replace(',', '.')) || 0;
+                communesTotals[nomCommune].total_foyers_imposes = parseFloat(String(row[7] || '0').replace(',', '.')) || 0;
+                communesTotals[nomCommune].total_revenu_imposes = parseFloat(String(row[8] || '0').replace(',', '.')) || 0;
+                
+                // Calculer le revenu moyen par foyer
+                if (communesTotals[nomCommune].total_foyers > 0) {
+                    communesTotals[nomCommune].revenu_moyen = 
+                        (communesTotals[nomCommune].total_revenu * 1000) / communesTotals[nomCommune].total_foyers;
+                }
+                
+                // Calculer l'impôt moyen par foyer
+                if (communesTotals[nomCommune].total_foyers_imposes > 0) {
+                    communesTotals[nomCommune].impot_moyen = 
+                        (communesTotals[nomCommune].total_impot * 1000) / communesTotals[nomCommune].total_foyers_imposes;
+                }
+                
+                // Taux d'imposition
+                if (communesTotals[nomCommune].total_foyers > 0) {
+                    communesTotals[nomCommune].taux_imposition = 
+                        (communesTotals[nomCommune].total_foyers_imposes / communesTotals[nomCommune].total_foyers * 100).toFixed(1);
+                }
+            }
+        }
+    }
+    
+    // Vérifier que nous avons des données
+    communeNames = Object.keys(communesTotals).sort();
+    
+    if (communeNames.length === 0) {
+        document.getElementById('ircomStatus').className = 'alert alert-danger';
+        document.getElementById('ircomStatus').textContent = '❌ Aucune donnée communale trouvée. Vérifiez le format du fichier.';
+        return;
+    }
+    
+    communesData = communesTotals;
+    
+    // Afficher la section des communes
+    document.getElementById('communeSection').style.display = 'block';
+    
+    // Mettre à jour le statut
+    document.getElementById('ircomStatus').className = 'alert alert-success';
+    document.getElementById('ircomStatus').innerHTML = `✅ IRCOM La Réunion chargé : <strong>${communeNames.length} communes</strong> trouvées`;
+    
+    // Afficher la liste des communes
+    displayCommuneList();
+    
+    // Sélectionner la première commune
+    if (communeNames.length > 0) {
+        selectCommune(communeNames[0]);
+    }
+}
+
+// ============================================================
+// AFFICHAGE DE LA LISTE DES COMMUNES
+// ============================================================
+function displayCommuneList() {
+    const container = document.getElementById('communeList');
+    container.innerHTML = '';
+    
+    communeNames.forEach((nom, index) => {
+        const data = communesData[nom];
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action commune-row';
+        item.innerHTML = `
+            <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">${nom}</h6>
+                <small>${data.total_foyers.toLocaleString()} foyers</small>
+            </div>
+            <small class="text-muted">Revenu moyen: ${Math.round(data.revenu_moyen || 0).toLocaleString()} €</small>
+        `;
+        item.onclick = (e) => {
+            e.preventDefault();
+            selectCommune(nom);
+            
+            // Highlight selected
+            document.querySelectorAll('.commune-row').forEach(el => {
+                el.classList.remove('active', 'selected');
+            });
+            item.classList.add('active', 'selected');
+        };
+        container.appendChild(item);
+    });
+}
+
+// ============================================================
+// SÉLECTION D'UNE COMMUNE
+// ============================================================
+function selectCommune(nom) {
+    const data = communesData[nom];
+    if (!data) return;
+    
+    // Afficher les KPIs
+    displayKPIs(data, nom);
+    
+    // Afficher le graphique
+    displayChart(data);
+    
+    // Afficher le tableau détaillé
+    displayDetailTable(data);
+}
+
+// ============================================================
+// AFFICHAGE DES KPIS
+// ============================================================
+function displayKPIs(data, nom) {
+    const container = document.getElementById('kpiContainer');
+    
+    let html = `
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">🏛️ ${nom}</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Revenu moyen / foyer</div>
+                            <div class="kpi-value">${Math.round(data.revenu_moyen || 0).toLocaleString()} €</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Impôt moyen / foyer imposé</div>
+                            <div class="kpi-value">${Math.round(data.impot_moyen || 0).toLocaleString()} €</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Foyers fiscaux</div>
+                            <div class="kpi-value">${data.total_foyers.toLocaleString()}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Taux d'imposition</div>
+                            <div class="kpi-value">${data.taux_imposition || 0} %</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Foyers imposés</h6>
+                                <h4>${data.total_foyers_imposes.toLocaleString()}</h4>
+                                <small class="text-muted">sur ${data.total_foyers.toLocaleString()} foyers</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Revenu total déclaré</h6>
+                                <h4>${(data.total_revenu * 1000).toLocaleString()} €</h4>
+                                <small class="text-muted">dont ${(data.total_revenu_imposes * 1000).toLocaleString()} € pour les foyers imposés</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// ============================================================
+// AFFICHAGE DU GRAPHIQUE
+// ============================================================
+function displayChart(data) {
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    
+    // Détruire le graphique existant
+    if (window.revenueChart instanceof Chart) {
+        window.revenueChart.destroy();
+    }
+    
+    // Préparer les données
+    const tranches = [];
+    const foyers = [];
+    const revenus = [];
+    
+    // Trier les tranches dans l'ordre
+    const order = ['0 à 10 000', '10 001 à 12 000', '12 001 à 15 000', '15 001 à 20 000', 
+                   '20 001 à 30 000', '30 001 à 50 000', '50 001 à 100 000', '+ de 100 000'];
+    
+    order.forEach(trancheNom => {
+        const tranche = data.tranches.find(t => t.nom === trancheNom);
+        if (tranche) {
+            tranches.push(trancheNom);
+            foyers.push(tranche.foyers);
+            revenus.push(tranche.revenu * 1000);
+        }
+    });
+    
+    window.revenueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: tranches,
+            datasets: [
+                {
+                    label: 'Nombre de foyers',
+                    data: foyers,
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Revenu total (€)',
+                    data: revenus,
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: `Répartition par tranche de revenu - ${data.nom}`
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.dataset.label.includes('Revenu')) {
+                                label += context.raw.toLocaleString() + ' €';
+                            } else {
+                                label += context.raw.toLocaleString();
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Nombre de foyers'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Revenu total (€)'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ============================================================
+// AFFICHAGE DU TABLEAU DÉTAILLÉ
+// ============================================================
+function displayDetailTable(data) {
+    const container = document.getElementById('detailTable');
+    
+    let html = `
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Tranche de revenu (€)</th>
+                    <th class="text-end">Nombre de foyers</th>
+                    <th class="text-end">Revenu total (k€)</th>
+                    <th class="text-end">Impôt net (k€)</th>
+                    <th class="text-end">Foyers imposés</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    // Trier les tranches
+    const order = ['0 à 10 000', '10 001 à 12 000', '12 001 à 15 000', '15 001 à 20 000', 
+                   '20 001 à 30 000', '30 001 à 50 000', '50 001 à 100 000', '+ de 100 000'];
+    
+    order.forEach(trancheNom => {
+        const tranche = data.tranches.find(t => t.nom === trancheNom);
+        if (tranche) {
+            html += `
+                <tr>
+                    <td>${tranche.nom}</td>
+                    <td class="text-end">${tranche.foyers.toLocaleString()}</td>
+                    <td class="text-end">${tranche.revenu.toLocaleString()} k€</td>
+                    <td class="text-end ${tranche.impot < 0 ? 'text-danger' : ''}">
+                        ${tranche.impot.toLocaleString()} k€
+                    </td>
+                    <td class="text-end">${tranche.foyers_imposes > 0 ? tranche.foyers_imposes.toLocaleString() : 'n.c.'}</td>
+                </tr>
+            `;
+        }
+    });
+    
+    html += `
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td>TOTAL</td>
+                    <td class="text-end">${data.total_foyers.toLocaleString()}</td>
+                    <td class="text-end">${data.total_revenu.toLocaleString()} k€</td>
+                    <td class="text-end">${data.total_impot.toLocaleString()} k€</td>
+                    <td class="text-end">${data.total_foyers_imposes.toLocaleString()}</td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+    
+    container.innerHTML = html;
+}
+
+</script>
+
+</body>
+</html>
