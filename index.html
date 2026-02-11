@@ -3,103 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fiscalité La Réunion - Dashboard 2026</title>
+    <title>IRCOM - Dashboard La Réunion</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     
-    <!-- SheetJS (version complète) -->
+    <!-- SheetJS -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     
     <style>
-        body { background-color: #f8f9fa; }
+        body { background: #f8f9fa; }
+        .glass-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 25px;
+            margin: 20px 0;
+        }
         .kpi-card {
             background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
             color: white;
-            border-radius: 10px;
+            border-radius: 15px;
             padding: 20px;
             margin: 10px 0;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .kpi-title { font-size: 14px; opacity: 0.9; }
-        .kpi-value { font-size: 28px; font-weight: bold; }
+        .kpi-value { font-size: 32px; font-weight: bold; }
+        .upload-area {
+            border: 3px dashed #4a90e2;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: rgba(255,255,255,0.9);
+            cursor: pointer;
+        }
         .commune-item {
             cursor: pointer;
-            padding: 10px;
-            border-bottom: 1px solid #dee2e6;
-            transition: all 0.2s;
+            padding: 15px;
+            margin: 5px 0;
+            border-radius: 10px;
+            background: white;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s;
         }
-        .commune-item:hover { background-color: #e9ecef; }
+        .commune-item:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
         .commune-item.active {
-            background-color: #0d6efd;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
             color: white;
         }
         .text-danger { color: #dc3545 !important; }
-        .n-c { color: #6c757d; font-style: italic; }
     </style>
 </head>
 <body>
 
-<div class="container-fluid">
+<div class="container py-4">
     <!-- En-tête -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <h1 class="text-center">🏝️ Fiscalité La Réunion - IRCOM 2024</h1>
-            <div class="alert alert-info text-center">
-                <h5>📊 Données officielles DGFiP - Revenus 2023</h5>
-                <p><strong>Format:</strong> Biff8/Excel 2003 · <strong>Montants:</strong> Milliers d'€</p>
-            </div>
+    <div class="glass-card text-center">
+        <h1 class="display-4">🏝️ IRCOM - La Réunion</h1>
+        <p class="lead">Données officielles DGFiP • Revenus 2023</p>
+        <p class="text-muted">Montants en milliers d'euros</p>
+    </div>
+
+    <!-- Zone d'upload -->
+    <div class="glass-card">
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept=".xls,.xlsx" style="display: none;">
+            <h3>📂 Téléchargez votre fichier 974.xls</h3>
+            <p class="text-muted">Cliquez ou glissez-déposez votre fichier Excel</p>
+        </div>
+        <div id="status" class="alert alert-info mt-3">
+            En attente du fichier La Réunion...
         </div>
     </div>
 
-    <!-- Upload -->
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">📂 1. Téléchargez votre fichier 974.xls</h5>
-                </div>
-                <div class="card-body">
-                    <input class="form-control" type="file" id="fileInput" accept=".xls,.xlsx">
-                    <div id="status" class="alert alert-secondary mt-3">Aucun fichier chargé</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Dashboard (caché par défaut) -->
+    <!-- Dashboard -->
     <div id="dashboard" style="display: none;">
         <div class="row mt-4">
             <!-- Liste des communes -->
             <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">🏘️ Communes de La Réunion</h5>
-                        <span id="communeCount" class="badge bg-light text-dark"></span>
-                    </div>
-                    <div class="card-body" style="max-height: 700px; overflow-y: auto;">
-                        <div id="communeList" class="list-group"></div>
-                    </div>
+                <div class="glass-card">
+                    <h4>🏘️ Communes</h4>
+                    <div id="communeCount" class="badge bg-success mb-3"></div>
+                    <div id="communeList" style="max-height: 600px; overflow-y: auto;"></div>
                 </div>
             </div>
             
             <!-- Détails -->
             <div class="col-md-8">
-                <div id="kpiContainer"></div>
-                <div id="chartContainer" class="card mt-3" style="display: none;">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">📊 Répartition par tranche</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="revenueChart"></canvas>
-                    </div>
-                </div>
-                <div id="tableContainer" class="card mt-3" style="display: none;">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">📋 Détail des tranches</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="detailTable"></div>
+                <div id="details" class="glass-card">
+                    <div class="alert alert-info">
+                        Sélectionnez une commune pour voir les détails
                     </div>
                 </div>
             </div>
@@ -107,72 +102,100 @@
     </div>
 </div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
 // ============================================================
-// DONNÉES DE SECOURS - 24 COMMUNES DE LA RÉUNION
+// CONSTANTES - 24 COMMUNES DE LA RÉUNION
 // ============================================================
-const COMMUNES_REUNION = [
-    "Les Avirons", "Bras-Panon", "Entre-Deux", "L'Étang-Salé", "Petite-Île",
-    "La Plaine-des-Palmistes", "Le Port", "La Possession", "Saint-André", "Saint-Benoît",
-    "Saint-Denis", "Saint-Joseph", "Saint-Leu", "Saint-Louis", "Saint-Paul",
-    "Saint-Pierre", "Saint-Philippe", "Sainte-Marie", "Sainte-Rose", "Sainte-Suzanne",
-    "Salazie", "Le Tampon", "Les Trois-Bassins", "Cilaos"
+const COMMUNES_974 = [
+    { code: "401", nom: "Les Avirons" },
+    { code: "402", nom: "Bras-Panon" },
+    { code: "403", nom: "Entre-Deux" },
+    { code: "404", nom: "L'Étang-Salé" },
+    { code: "405", nom: "Petite-Île" },
+    { code: "406", nom: "La Plaine-des-Palmistes" },
+    { code: "407", nom: "Le Port" },
+    { code: "408", nom: "La Possession" },
+    { code: "409", nom: "Saint-André" },
+    { code: "410", nom: "Saint-Benoît" },
+    { code: "411", nom: "Saint-Denis" },
+    { code: "412", nom: "Saint-Joseph" },
+    { code: "413", nom: "Saint-Leu" },
+    { code: "414", nom: "Saint-Louis" },
+    { code: "415", nom: "Saint-Paul" },
+    { code: "416", nom: "Saint-Pierre" },
+    { code: "417", nom: "Saint-Philippe" },
+    { code: "418", nom: "Sainte-Marie" },
+    { code: "419", nom: "Sainte-Rose" },
+    { code: "420", nom: "Sainte-Suzanne" },
+    { code: "421", nom: "Salazie" },
+    { code: "422", nom: "Le Tampon" },
+    { code: "423", nom: "Les Trois-Bassins" },
+    { code: "424", nom: "Cilaos" }
 ];
 
 // ============================================================
-// VARIABLES GLOBALES
-// ============================================================
-let communesData = {};
-
-// ============================================================
-// CHARGEMENT DU FICHIER
+// FONCTION DE LECTURE SPÉCIFIQUE POUR LE FICHIER RÉUNION
 // ============================================================
 document.getElementById('fileInput').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
     
     const status = document.getElementById('status');
-    status.className = 'alert alert-info';
-    status.innerHTML = '🔄 Lecture du fichier Excel (format Biff8)...';
+    status.className = 'alert alert-warning';
+    status.innerHTML = '🔄 Lecture du fichier...';
     
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            // 🔴 SOLUTION SPÉCIFIQUE POUR BIFF8/EXCEL 2003
+            // 🔥 Lire le fichier avec SheetJS
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { 
                 type: 'array',
-                cellHTML: false,
-                cellFormula: false,
                 cellText: true,
-                cellDates: true,
+                cellDates: false,
                 sheetStubs: true,
+                raw: true,
+                codepage: 1252,
+                cellFormula: false,
+                cellHTML: false,
+                sheetRows: 1000 // Lire seulement les 1000 premières lignes
+            });
+            
+            // Prendre la première feuille
+            const firstSheet = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheet];
+            
+            // 🔥 Conversion en JSON brut sans en-têtes
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                header: 1,
+                defval: '',
+                blankrows: false,
                 raw: true
             });
             
-            // Première feuille
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
+            // 🔥 ANALYSE SPÉCIFIQUE POUR LE FORMAT RÉUNION
+            const communes = parseReunionFile(jsonData);
             
-            // Conversion en CSV puis parsing intelligent
-            const csv = XLSX.utils.sheet_to_csv(worksheet, { blankrows: false });
-            const rows = csv.split('\n').map(row => row.split(','));
+            if (Object.keys(communes).length === 0) {
+                throw new Error("Aucune commune trouvée");
+            }
             
-            // Extraire les données
-            extractReunionData(rows, status);
+            // ✅ SUCCÈS !
+            status.className = 'alert alert-success';
+            status.innerHTML = `✅ ${Object.keys(communes).length} communes de La Réunion chargées !`;
+            
+            // Afficher le dashboard
+            document.getElementById('dashboard').style.display = 'block';
+            displayCommunes(communes);
             
         } catch(error) {
-            console.error('Erreur détaillée:', error);
+            console.error(error);
             status.className = 'alert alert-danger';
             status.innerHTML = `
-                ❌ Erreur de lecture du fichier.<br>
-                <strong>Utilisation des données de secours.</strong><br>
-                <small>${error.message}</small>
-                <button class="btn btn-warning mt-2" onclick="loadBackupData()">
-                    📊 Charger les données de secours
+                ❌ Erreur: ${error.message}<br>
+                <small>Vérifiez que le fichier est bien le IRCOM 974</small>
+                <button class="btn btn-sm btn-warning mt-2" onclick="loadDemoData()">
+                    📊 Charger les données de démonstration
                 </button>
             `;
         }
@@ -181,44 +204,38 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 });
 
 // ============================================================
-// EXTRACTION SPÉCIFIQUE POUR LA RÉUNION
+// ANALYSE SPÉCIFIQUE POUR LE FICHIER RÉUNION
 // ============================================================
-function extractReunionData(rows, status) {
-    communesData = {};
-    let inCommunesSection = false;
-    let currentCommune = '';
+function parseReunionFile(rows) {
+    const communes = {};
+    let currentCommune = null;
     
-    rows.forEach((row, index) => {
-        // Ignorer les lignes vides
-        if (!row || row.length < 3) return;
+    // Parcourir toutes les lignes
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length < 5) continue;
         
         // Nettoyer les valeurs
         const col0 = String(row[0] || '').trim();
         const col1 = String(row[1] || '').trim();
         const col2 = String(row[2] || '').trim();
         const col3 = String(row[3] || '').trim();
-        const col4 = String(row[4] || '').trim();
-        const col5 = String(row[5] || '').trim();
-        const col6 = String(row[6] || '').trim();
-        const col7 = String(row[7] || '').trim();
-        const col8 = String(row[8] || '').trim();
         
-        // Détecter le début de la section des communes
-        if (col0 === '974' && col1.length === 3 && !isNaN(col1) && 
-            col2 && !col2.includes('LA REUNION') && !col2.includes('Dép.')) {
+        // 🔥 DÉTECTION D'UNE COMMUNE
+        // Format: 974 | 401 | Les Avirons | 0 à 10 000 | ...
+        if (col0 === '974' && col1.length === 3 && !isNaN(col1) && col2 && 
+            !col2.includes('LA REUNION') && !col2.includes('Dép.') && !col2.includes('Libellé')) {
             
-            inCommunesSection = true;
             const nomCommune = col2;
+            const codeCommune = col1;
             const tranche = col3;
             
-            // Ignorer la ligne d'en-tête
-            if (nomCommune.includes('Commune') || nomCommune.includes('Libellé')) return;
-            
             // Initialiser la commune
-            if (!communesData[nomCommune]) {
-                communesData[nomCommune] = {
+            if (!communes[nomCommune]) {
+                communes[nomCommune] = {
                     nom: nomCommune,
-                    code: col1,
+                    code: codeCommune,
+                    insee: `974${codeCommune}`,
                     tranches: [],
                     total_foyers: 0,
                     total_revenu: 0,
@@ -227,249 +244,221 @@ function extractReunionData(rows, status) {
                 };
             }
             
-            // Ajouter la tranche
-            if (tranche && !tranche.includes('Total')) {
-                communesData[nomCommune].tranches.push({
+            // 🔥 LECTURE DES VALEURS
+            if (tranche && tranche !== 'Total' && !tranche.includes('Revenu')) {
+                // Nettoyer et convertir les nombres
+                const foyers = parseFloat(String(row[4] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                const revenu = parseFloat(String(row[5] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                const impot = parseFloat(String(row[6] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                const foyersImposes = parseFloat(String(row[7] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                
+                communes[nomCommune].tranches.push({
                     nom: tranche,
-                    foyers: parseFloat(col4) || 0,
-                    revenu: parseFloat(col5) || 0,
-                    impot: parseFloat(col6) || 0,
-                    foyers_imposes: parseFloat(col7) || 0
+                    foyers: foyers,
+                    revenu: revenu,
+                    impot: impot,
+                    foyers_imposes: foyersImposes
                 });
             }
             
-            // Ligne TOTAL
+            // 🔥 LECTURE DE LA LIGNE TOTAL
             if (tranche === 'Total') {
-                communesData[nomCommune].total_foyers = parseFloat(col4) || 0;
-                communesData[nomCommune].total_revenu = parseFloat(col5) || 0;
-                communesData[nomCommune].total_impot = parseFloat(col6) || 0;
-                communesData[nomCommune].total_foyers_imposes = parseFloat(col7) || 0;
+                communes[nomCommune].total_foyers = parseFloat(String(row[4] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                communes[nomCommune].total_revenu = parseFloat(String(row[5] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                communes[nomCommune].total_impot = parseFloat(String(row[6] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
+                communes[nomCommune].total_foyers_imposes = parseFloat(String(row[7] || '0').replace(/,/g, '.').replace(/[^\d.-]/g, '')) || 0;
                 
-                // Calculs
-                if (communesData[nomCommune].total_foyers > 0) {
-                    communesData[nomCommune].revenu_moyen = 
-                        (communesData[nomCommune].total_revenu * 1000) / communesData[nomCommune].total_foyers;
+                // 📈 CALCULS
+                const data = communes[nomCommune];
+                if (data.total_foyers > 0) {
+                    data.revenu_moyen = Math.round((data.total_revenu * 1000) / data.total_foyers);
                 }
-                if (communesData[nomCommune].total_foyers_imposes > 0) {
-                    communesData[nomCommune].impot_moyen = 
-                        (communesData[nomCommune].total_impot * 1000) / communesData[nomCommune].total_foyers_imposes;
+                if (data.total_foyers_imposes > 0) {
+                    data.impot_moyen = Math.round((data.total_impot * 1000) / data.total_foyers_imposes);
                 }
-                if (communesData[nomCommune].total_foyers > 0) {
-                    communesData[nomCommune].taux_imposition = 
-                        (communesData[nomCommune].total_foyers_imposes / communesData[nomCommune].total_foyers * 100).toFixed(1);
+                if (data.total_foyers > 0) {
+                    data.taux_imposition = ((data.total_foyers_imposes / data.total_foyers) * 100).toFixed(1);
                 }
             }
         }
+    }
+    
+    return communes;
+}
+
+// ============================================================
+// AFFICHAGE DES COMMUNES
+// ============================================================
+function displayCommunes(communes) {
+    const container = document.getElementById('communeList');
+    const count = document.getElementById('communeCount');
+    
+    const communeNames = Object.keys(communes).sort();
+    count.innerHTML = `${communeNames.length} communes trouvées`;
+    
+    container.innerHTML = '';
+    
+    communeNames.forEach((nom, index) => {
+        const data = communes[nom];
+        
+        const item = document.createElement('div');
+        item.className = 'commune-item';
+        item.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="mb-1">${nom}</h6>
+                    <small>Code: ${data.code}</small>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-primary">${data.total_foyers.toLocaleString()}</span>
+                    <br>
+                    <small>foyers</small>
+                </div>
+            </div>
+            <div class="mt-2">
+                <div class="d-flex justify-content-between">
+                    <small>💰 ${data.revenu_moyen?.toLocaleString() || 'N/A'} €</small>
+                    <small>📊 ${data.taux_imposition || 0}%</small>
+                </div>
+            </div>
+        `;
+        
+        item.onclick = function() {
+            // Enlever la classe active de tous les items
+            document.querySelectorAll('.commune-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            this.classList.add('active');
+            
+            // Afficher les détails
+            displayCommuneDetails(communes, nom);
+        };
+        
+        container.appendChild(item);
     });
     
-    // Vérifier le nombre de communes trouvées
-    const communeNames = Object.keys(communesData).sort();
-    
-    if (communeNames.length === 0) {
-        status.className = 'alert alert-warning';
-        status.innerHTML = `
-            ⚠️ Aucune commune détectée dans le fichier.<br>
-            <strong>Utilisation des données de secours.</strong>
-            <button class="btn btn-warning mt-2" onclick="loadBackupData()">
-                📊 Charger les 24 communes
-            </button>
-        `;
-    } else {
-        // Succès !
-        status.className = 'alert alert-success';
-        status.innerHTML = `✅ ${communeNames.length} communes de La Réunion trouvées !`;
-        
-        // Afficher le dashboard
-        document.getElementById('dashboard').style.display = 'block';
-        document.getElementById('communeCount').textContent = `${communeNames.length} communes`;
-        
-        // Afficher la liste
-        displayCommuneList(communeNames);
-        
-        // Sélectionner la première commune
-        if (communeNames.length > 0) {
-            selectCommune(communeNames[0]);
-        }
+    // Sélectionner la première commune
+    if (communeNames.length > 0) {
+        document.querySelector('.commune-item').classList.add('active');
+        displayCommuneDetails(communes, communeNames[0]);
     }
 }
 
 // ============================================================
-// DONNÉES DE SECOURS - 24 COMMUNES
+// AFFICHAGE DES DÉTAILS D'UNE COMMUNE
 // ============================================================
-function loadBackupData() {
-    const status = document.getElementById('status');
-    status.className = 'alert alert-success';
-    status.innerHTML = '✅ Données de secours chargées - 24 communes de La Réunion';
+function displayCommuneDetails(communes, nom) {
+    const data = communes[nom];
+    const container = document.getElementById('details');
     
-    // Créer des données fictives basées sur les vrais chiffres
-    communesData = {};
-    
-    // Valeurs de base pour Saint-Denis (la plus grande)
-    const baseData = {
-        total_foyers: 97930,
-        total_revenu: 2327702.257,
-        total_impot: 127412.71,
-        total_foyers_imposes: 27266,
-        revenu_moyen: 23770,
-        impot_moyen: 4673,
-        taux_imposition: 27.8
-    };
-    
-    COMMUNES_REUNION.forEach((nom, index) => {
-        // Facteur pour varier les données
-        const factor = 0.3 + (index * 0.03);
+    let html = `
+        <div class="d-flex justify-content-between align-items-start">
+            <h4>🏛️ ${nom}</h4>
+            <span class="badge bg-secondary">INSEE: 974${data.code}</span>
+        </div>
         
-        communesData[nom] = {
-            nom: nom,
-            code: String(401 + index).padStart(3, '0'),
-            total_foyers: Math.round(baseData.total_foyers * factor),
-            total_revenu: baseData.total_revenu * factor,
-            total_impot: baseData.total_impot * factor,
-            total_foyers_imposes: Math.round(baseData.total_foyers_imposes * factor),
-            revenu_moyen: Math.round(baseData.revenu_moyen * (0.8 + index * 0.02)),
-            impot_moyen: Math.round(baseData.impot_moyen * (0.7 + index * 0.03)),
-            taux_imposition: (20 + index * 0.4).toFixed(1),
-            tranches: []
-        };
-    });
-    
-    // Afficher le dashboard
-    document.getElementById('dashboard').style.display = 'block';
-    document.getElementById('communeCount').textContent = '24 communes';
-    
-    const communeNames = Object.keys(communesData).sort();
-    displayCommuneList(communeNames);
-    selectCommune(communeNames[0]);
-}
-
-// ============================================================
-// AFFICHAGE DE LA LISTE
-// ============================================================
-function displayCommuneList(communeNames) {
-    const container = document.getElementById('communeList');
-    container.innerHTML = '';
-    
-    communeNames.forEach((nom, index) => {
-        const data = communesData[nom];
-        const item = document.createElement('a');
-        item.href = '#';
-        item.className = 'list-group-item list-group-item-action';
-        item.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">${nom}</h6>
-                    <small class="text-muted">Code: ${data.code || '974' + (401 + index)}</small>
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-title">Revenu moyen</div>
+                    <div class="kpi-value">${data.revenu_moyen?.toLocaleString() || 0} €</div>
+                    <small>par foyer</small>
                 </div>
-                <span class="badge bg-primary rounded-pill">
-                    ${data.total_foyers.toLocaleString()} foyers
-                </span>
             </div>
-            <div class="mt-1">
-                <small>Revenu moyen: ${Math.round(data.revenu_moyen || 0).toLocaleString()} €</small>
+            <div class="col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-title">Impôt moyen</div>
+                    <div class="kpi-value">${data.impot_moyen?.toLocaleString() || 0} €</div>
+                    <small>par foyer imposé</small>
+                </div>
             </div>
+            <div class="col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-title">Foyers</div>
+                    <div class="kpi-value">${data.total_foyers.toLocaleString()}</div>
+                    <small>dont ${data.total_foyers_imposes.toLocaleString()} imposés</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-title">Taux</div>
+                    <div class="kpi-value">${data.taux_imposition || 0}%</div>
+                    <small>d'imposition</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>Revenu total</h6>
+                        <h3 class="text-primary">${(data.total_revenu * 1000).toLocaleString()} €</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>Impôt total</h6>
+                        <h3 class="${data.total_impot < 0 ? 'text-danger' : 'text-success'}">
+                            ${(data.total_impot * 1000).toLocaleString()} €
+                        </h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h6>📊 Détail par tranche de revenu</h6>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tranche</th>
+                            <th class="text-end">Foyers</th>
+                            <th class="text-end">Revenu (k€)</th>
+                            <th class="text-end">Impôt (k€)</th>
+                            <th class="text-end">Foyers imposés</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    // Trier les tranches
+    const order = ['0 à 10 000', '10 001 à 12 000', '12 001 à 15 000', '15 001 à 20 000', 
+                   '20 001 à 30 000', '30 001 à 50 000', '50 001 à 100 000', '+ de 100 000'];
+    
+    data.tranches.sort((a, b) => order.indexOf(a.nom) - order.indexOf(b.nom));
+    
+    data.tranches.forEach(tranche => {
+        html += `
+            <tr>
+                <td>${tranche.nom}</td>
+                <td class="text-end">${Math.round(tranche.foyers).toLocaleString()}</td>
+                <td class="text-end">${tranche.revenu.toLocaleString()} k€</td>
+                <td class="text-end ${tranche.impot < 0 ? 'text-danger' : ''}">
+                    ${tranche.impot.toLocaleString()} k€
+                </td>
+                <td class="text-end">${tranche.foyers_imposes > 0 ? Math.round(tranche.foyers_imposes).toLocaleString() : 'n.c.'}</td>
+            </tr>
         `;
-        item.onclick = (e) => {
-            e.preventDefault();
-            selectCommune(nom);
-            
-            // Highlight
-            document.querySelectorAll('.list-group-item').forEach(el => {
-                el.classList.remove('active');
-            });
-            item.classList.add('active');
-        };
-        container.appendChild(item);
     });
-}
-
-// ============================================================
-// SÉLECTION D'UNE COMMUNE
-// ============================================================
-function selectCommune(nom) {
-    const data = communesData[nom];
-    if (!data) return;
     
-    // Afficher les conteneurs
-    document.getElementById('chartContainer').style.display = 'block';
-    document.getElementById('tableContainer').style.display = 'block';
-    
-    // Afficher les KPIs
-    displayKPIs(data, nom);
-    
-    // Afficher le graphique
-    displayChart(data);
-    
-    // Afficher le tableau
-    displayDetailTable(data);
-}
-
-// ============================================================
-// AFFICHAGE DES KPIS
-// ============================================================
-function displayKPIs(data, nom) {
-    const container = document.getElementById('kpiContainer');
-    
-    const html = `
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">🏛️ ${nom}</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Revenu moyen / foyer</div>
-                            <div class="kpi-value">${Math.round(data.revenu_moyen || 0).toLocaleString()} €</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Impôt moyen / foyer imposé</div>
-                            <div class="kpi-value">${Math.round(data.impot_moyen || 0).toLocaleString()} €</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Foyers fiscaux</div>
-                            <div class="kpi-value">${data.total_foyers.toLocaleString()}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Taux d'imposition</div>
-                            <div class="kpi-value">${data.taux_imposition || 0} %</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="row mt-3">
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6>Foyers imposés</h6>
-                                <h4>${data.total_foyers_imposes.toLocaleString()}</h4>
-                                <small>${((data.total_foyers_imposes / data.total_foyers) * 100).toFixed(1)}% des foyers</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6>Revenu total</h6>
-                                <h4>${(data.total_revenu * 1000).toLocaleString()} €</h4>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6>Impôt total</h6>
-                                <h4 class="${data.total_impot < 0 ? 'text-danger' : ''}">
-                                    ${(data.total_impot * 1000).toLocaleString()} €
-                                </h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    html += `
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr>
+                            <th>TOTAL</th>
+                            <th class="text-end">${data.total_foyers.toLocaleString()}</th>
+                            <th class="text-end">${data.total_revenu.toLocaleString()} k€</th>
+                            <th class="text-end ${data.total_impot < 0 ? 'text-danger' : ''}">
+                                ${data.total_impot.toLocaleString()} k€
+                            </th>
+                            <th class="text-end">${data.total_foyers_imposes.toLocaleString()}</th>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
         </div>
     `;
@@ -478,157 +467,39 @@ function displayKPIs(data, nom) {
 }
 
 // ============================================================
-// AFFICHAGE DU GRAPHIQUE
+// DONNÉES DE DÉMONSTRATION (SI LE FICHIER NE MARCHE PAS)
 // ============================================================
-function displayChart(data) {
-    if (!data.tranches || data.tranches.length === 0) {
-        // Créer des données fictives
-        data.tranches = [
-            { nom: '0 à 10 000', foyers: data.total_foyers * 0.15, revenu: data.total_revenu * 0.05 },
-            { nom: '10 001 à 12 000', foyers: data.total_foyers * 0.08, revenu: data.total_revenu * 0.03 },
-            { nom: '12 001 à 15 000', foyers: data.total_foyers * 0.1, revenu: data.total_revenu * 0.05 },
-            { nom: '15 001 à 20 000', foyers: data.total_foyers * 0.15, revenu: data.total_revenu * 0.1 },
-            { nom: '20 001 à 30 000', foyers: data.total_foyers * 0.2, revenu: data.total_revenu * 0.2 },
-            { nom: '30 001 à 50 000', foyers: data.total_foyers * 0.18, revenu: data.total_revenu * 0.25 },
-            { nom: '50 001 à 100 000', foyers: data.total_foyers * 0.1, revenu: data.total_revenu * 0.2 },
-            { nom: '+ de 100 000', foyers: data.total_foyers * 0.04, revenu: data.total_revenu * 0.12 }
-        ];
-    }
+function loadDemoData() {
+    const communes = {};
     
-    const ctx = document.getElementById('revenueChart').getContext('2d');
-    
-    if (window.revenueChart) window.revenueChart.destroy();
-    
-    const order = ['0 à 10 000', '10 001 à 12 000', '12 001 à 15 000', '15 001 à 20 000', 
-                   '20 001 à 30 000', '30 001 à 50 000', '50 001 à 100 000', '+ de 100 000'];
-    
-    const labels = [];
-    const foyersData = [];
-    const revenuData = [];
-    
-    order.forEach(trancheName => {
-        const tranche = data.tranches.find(t => t.nom === trancheName);
-        if (tranche) {
-            labels.push(trancheName);
-            foyersData.push(tranche.foyers);
-            revenuData.push(tranche.revenu * 1000);
-        }
+    // Créer des données réalistes pour les 24 communes
+    COMMUNES_974.forEach((commune, index) => {
+        const baseFoyers = 5000 + (index * 300);
+        const baseRevenu = 150000 + (index * 5000);
+        const baseImpot = 5000 + (index * 200);
+        
+        communes[commune.nom] = {
+            nom: commune.nom,
+            code: commune.code,
+            insee: `974${commune.code}`,
+            total_foyers: baseFoyers,
+            total_revenu: baseRevenu,
+            total_impot: baseImpot,
+            total_foyers_imposes: Math.round(baseFoyers * 0.35),
+            revenu_moyen: Math.round((baseRevenu * 1000) / baseFoyers),
+            impot_moyen: Math.round((baseImpot * 1000) / Math.round(baseFoyers * 0.35)),
+            taux_imposition: '35.0',
+            tranches: []
+        };
     });
     
-    window.revenueChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Nombre de foyers',
-                    data: foyersData,
-                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 1,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Revenu total (€)',
-                    data: revenuData,
-                    backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    borderWidth: 1,
-                    yAxisID: 'y1'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: `${data.nom} - Répartition par tranche de revenu`
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: { display: true, text: 'Nombre de foyers' }
-                },
-                y1: {
-                    beginAtZero: true,
-                    position: 'right',
-                    title: { display: true, text: 'Revenu total (€)' },
-                    grid: { drawOnChartArea: false }
-                }
-            }
-        }
-    });
+    const status = document.getElementById('status');
+    status.className = 'alert alert-success';
+    status.innerHTML = '✅ Données de démonstration chargées (24 communes)';
+    
+    document.getElementById('dashboard').style.display = 'block';
+    displayCommunes(communes);
 }
-
-// ============================================================
-// AFFICHAGE DU TABLEAU
-// ============================================================
-function displayDetailTable(data) {
-    const container = document.getElementById('detailTable');
-    
-    let html = `
-        <table class="table table-striped table-hover">
-            <thead>
-                <tr>
-                    <th>Tranche de revenu (€)</th>
-                    <th class="text-end">Foyers</th>
-                    <th class="text-end">Revenu (k€)</th>
-                    <th class="text-end">Impôt (k€)</th>
-                    <th class="text-end">Foyers imposés</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-    
-    const order = ['0 à 10 000', '10 001 à 12 000', '12 001 à 15 000', '15 001 à 20 000', 
-                   '20 001 à 30 000', '30 001 à 50 000', '50 001 à 100 000', '+ de 100 000'];
-    
-    if (data.tranches && data.tranches.length > 0) {
-        order.forEach(trancheName => {
-            const tranche = data.tranches.find(t => t.nom === trancheName);
-            if (tranche) {
-                html += `
-                    <tr>
-                        <td>${tranche.nom}</td>
-                        <td class="text-end">${Math.round(tranche.foyers).toLocaleString()}</td>
-                        <td class="text-end">${tranche.revenu.toLocaleString()} k€</td>
-                        <td class="text-end ${tranche.impot < 0 ? 'text-danger' : ''}">
-                            ${tranche.impot.toLocaleString()} k€
-                        </td>
-                        <td class="text-end">${tranche.foyers_imposes > 0 ? Math.round(tranche.foyers_imposes).toLocaleString() : 'n.c.'}</td>
-                    </tr>
-                `;
-            }
-        });
-    }
-    
-    html += `
-            </tbody>
-            <tfoot class="table-dark">
-                <tr>
-                    <th>TOTAL</th>
-                    <th class="text-end">${data.total_foyers.toLocaleString()}</th>
-                    <th class="text-end">${data.total_revenu.toLocaleString()} k€</th>
-                    <th class="text-end ${data.total_impot < 0 ? 'text-danger' : ''}">
-                        ${data.total_impot.toLocaleString()} k€
-                    </th>
-                    <th class="text-end">${data.total_foyers_imposes.toLocaleString()}</th>
-                </tr>
-            </tfoot>
-        </table>
-    `;
-    
-    container.innerHTML = html;
-}
-
-// Initialiser avec les données de secours
-window.onload = function() {
-    // Optionnel: charger automatiquement les données de secours
-    // loadBackupData();
-};
 </script>
 
 </body>
